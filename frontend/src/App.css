@@ -1,0 +1,49 @@
+.App {
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+  background-color: white;
+}
+
+.swipe-card {
+  touch-action: none;
+  user-select: none;
+  position: absolute;
+  background: white;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1), 0 1px 8px rgba(0, 0, 0, 0.06);
+}
+
+.swipe-indicator {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 4rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.swipe-indicator.left {
+  left: 2rem;
+}
+
+.swipe-indicator.right {
+  right: 2rem;
+}
+
+.swipe-indicator.up {
+  top: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.slider-track {
+  background: linear-gradient(to right, #8B5CF6 0%, #A78BFA 50%, #E5E7EB 100%);
+}
+
+.slider-thumb {
+  background: #8B5CF6;
+  border: 2px solid white;
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+}

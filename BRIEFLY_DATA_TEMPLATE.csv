@@ -1,0 +1,105 @@
+EDITING STYLE CARDS (8 required)
+Card #,Title,Description,Reference Image URL,Pace (fast/medium/slow),Shot Duration
+1,Fast-Paced Social Cuts,Quick energetic transitions,https://example.com/image1.jpg,fast,1-2s
+2,Cinematic Slow Pacing,Deliberate measured cuts,https://example.com/image2.jpg,slow,5-8s
+3,Documentary Style,Natural interview-based editing,https://example.com/image3.jpg,medium,3-5s
+4,Music Video Style,Beat-synced editing,https://example.com/image4.jpg,fast,0.5-2s
+5,Vlog Aesthetic,Personal handheld feel,https://example.com/image5.jpg,medium,2-4s
+6,Commercial Polish,Refined professional cuts,https://example.com/image6.jpg,medium,3-4s
+7,Action-Packed Montage,Dynamic high-energy sequences,https://example.com/image7.jpg,fast,0.5-1.5s
+8,Minimalist Long Takes,Extended shots minimal cutting,https://example.com/image8.jpg,slow,8-15s
+
+COLOR GRADING CARDS (8 required)
+Card #,Title,Description,Before Image URL,After Image URL (or use same with filter),Color Hex Codes (comma separated),Palette Type,Mood
+1,Warm Cinematic Tones,Golden hour feel,https://example.com/before1.jpg,https://example.com/after1.jpg,"#FF8C42,#FFD93D,#FFA500",warm,nostalgic
+2,Pastel Palette,Soft desaturated colors,https://example.com/before2.jpg,https://example.com/after2.jpg,"#FFB6D9,#A8D8EA,#E7BCDE",pastel,dreamy
+3,Neon Cyberpunk,Vibrant purples blues magentas,https://example.com/before3.jpg,https://example.com/after3.jpg,"#FF006E,#8338EC,#3A86FF",neon,futuristic
+4,High Contrast Dramatic,Deep blacks bright highlights,https://example.com/before4.jpg,https://example.com/after4.jpg,"#000000,#FFFFFF,#8B0000",high-contrast,dramatic
+5,Soft Commercial Look,Clean natural colors,https://example.com/before5.jpg,https://example.com/after5.jpg,"#F5E6D3,#C9ADA7,#9A8C98",natural,professional
+6,Desaturated Moody,Low saturation cool tones,https://example.com/before6.jpg,https://example.com/after6.jpg,"#6C757D,#495057,#ADB5BD",desaturated,moody
+7,Vibrant Pop Colors,Saturated punchy colors,https://example.com/before7.jpg,https://example.com/after7.jpg,"#FF005C,#FFD500,#00F5FF",vibrant,energetic
+8,Film Noir,Black and white dramatic,https://example.com/before8.jpg,https://example.com/after8.jpg,"#000000,#808080,#FFFFFF",monochrome,mysterious
+
+MUSIC STYLE CARDS (8 required)
+Card #,Title,Description,Audio Sample URL (MP3/WAV),Genre,Tempo BPM,Mood
+1,Indie Electronic,Synth-driven melodies,https://example.com/audio1.mp3,electronic,110-130,modern
+2,Orchestral Cinematic,Sweeping strings epic brass,https://example.com/audio2.mp3,orchestral,80-100,epic
+3,Hip Hop Trap,Heavy 808s punchy hi-hats,https://example.com/audio3.mp3,hip-hop,140-160,confident
+4,Lo-fi Chill,Relaxed beats vinyl crackle,https://example.com/audio4.mp3,lo-fi,70-90,mellow
+5,Corporate Uplifting,Motivational piano light percussion,https://example.com/audio5.mp3,corporate,100-120,optimistic
+6,Ambient Soundscape,Atmospheric pads subtle movements,https://example.com/audio6.mp3,ambient,60-80,ethereal
+7,Rock Energetic,Electric guitars driving drums,https://example.com/audio7.mp3,rock,120-140,powerful
+8,Jazz Smooth,Saxophone upright bass,https://example.com/audio8.mp3,jazz,90-110,sophisticated
+
+TYPOGRAPHY CARDS (8 required)
+Card #,Title,Description,Google Font Name,Font Weight (100-900),Sample Text to Display,Style Type
+1,Modern Geometric Sans,Clean precise letterforms,Montserrat,500,CREATIVE DIRECTION,sans-serif
+2,Elegant Luxury Serif,Refined serifs high contrast,Playfair Display,300,Premium Quality,serif
+3,Bold Condensed,Narrow impactful letters,Bebas Neue,700,IMPACT,condensed
+4,Handwritten Style,Organic personal letterforms,Dancing Script,400,Authentic Stories,script
+5,Retro Display,Vintage-inspired characters,Righteous,700,RETRO VIBES,display
+6,Minimalist Thin,Delicate lightweight letterforms,Raleway,200,Elegance,sans-serif
+7,Grunge Textured,Distressed edgy typography,Bungee,700,RAW ENERGY,display
+8,Futuristic Tech,Angular digital-inspired letterforms,Orbitron,500,FUTURE TECH,sans-serif
+
+MOTION GRAPHICS CARDS (8 required)
+Card #,Title,Description,Reference Image/GIF URL,Complexity (low/medium/high),Style Type
+1,Minimal Line Art,Simple elegant line animations,https://example.com/motion1.jpg,low,minimal
+2,3D Product Showcase,Rotating 3D elements with depth,https://example.com/motion2.jpg,high,3d
+3,Kinetic Typography,Animated text with motion,https://example.com/motion3.jpg,medium,text
+4,Flat Icon Animation,Smooth icon transitions,https://example.com/motion4.jpg,low,flat
+5,Particle Effects,Flowing particles organic motion,https://example.com/motion5.jpg,high,particles
+6,Infographic Animation,Data visualization in motion,https://example.com/motion6.jpg,medium,data
+7,Liquid Motion,Smooth fluid transitions,https://example.com/motion7.jpg,high,liquid
+8,Geometric Shapes,Bold geometric animations,https://example.com/motion8.jpg,medium,geometric
+
+VIDEO TYPE OPTIONS (6 required)
+Type ID,Display Title,Description,Thumbnail Image URL
+ugc,UGC / Creator Style,Authentic relatable content from creator perspective,https://example.com/type1.jpg
+social_ad,Social Media Ad,Fast-paced attention-grabbing advertisement,https://example.com/type2.jpg
+corporate,Corporate / Brand Film,Professional polished brand storytelling,https://example.com/type3.jpg
+documentary,Documentary,In-depth storytelling with interviews and b-roll,https://example.com/type4.jpg
+narrative_ad,Narrative Ad,Story-driven commercial with character and plot,https://example.com/type5.jpg
+interview,Talking Head / Interview,Conversation-focused with expert or testimonial,https://example.com/type6.jpg
+
+NOTES AND INSTRUCTIONS
+================================================================================
+GENERAL REQUIREMENTS:
+- All image URLs must be direct links to JPG/PNG files
+- All audio URLs must be direct links to MP3/WAV files
+- Use high-quality royalty-free content
+- Images should be at least 1200x800px
+- Audio samples should be 15-30 seconds long
+
+IMAGE SOURCES (Royalty-free):
+- Unsplash.com (free high-quality images)
+- Pexels.com (free stock photos and videos)
+- Pixabay.com (free images and videos)
+
+AUDIO SOURCES (Royalty-free):
+- Free Music Archive (freemusicarchive.org)
+- Incompetech.com (Kevin MacLeod music)
+- YouTube Audio Library
+- Bensound.com (free music with attribution)
+
+GOOGLE FONTS:
+- All fonts listed are available on Google Fonts
+- Use exact font names as specified
+- Font weights: 100=Thin, 200=Light, 300=Light, 400=Regular, 500=Medium, 600=SemiBold, 700=Bold, 800=ExtraBold, 900=Black
+
+COLOR CODES:
+- Use hex format: #RRGGBB
+- Provide 3-5 colors per palette
+- Colors should complement each other
+
+MOTION GRAPHICS:
+- Can use still images showing motion graphic style
+- Or animated GIFs/videos showing the effect
+- Reference examples from Dribbble.com or Behance.net
+
+FILE DELIVERY:
+Once you have all the content ready:
+1. Fill in all URLs in this spreadsheet
+2. Test all URLs to ensure they work
+3. Verify image quality and audio clarity
+4. Submit completed spreadsheet for implementation

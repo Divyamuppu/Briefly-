@@ -1,0 +1,127 @@
+{
+  "project_name": "Briefly",
+  "design_philosophy": {
+    "persona": "E1 - The Anti-AI Designer",
+    "core_concept": "The Digital Slate",
+    "vibe": "Cinematic, Tactile, High-Contrast, Professional yet Avant-Garde",
+    "theme": "dark"
+  },
+  "typography": {
+    "font_family": {
+      "display": "Syne, sans-serif",
+      "body": "Manrope, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scaling": {
+      "h1": "text-5xl md:text-7xl font-bold tracking-tight leading-none",
+      "h2": "text-4xl md:text-5xl font-semibold tracking-tight",
+      "h3": "text-2xl md:text-3xl font-medium",
+      "body_lg": "text-lg leading-relaxed text-muted-foreground",
+      "body_base": "text-base leading-relaxed text-muted-foreground",
+      "label": "text-xs font-mono uppercase tracking-[0.2em] text-muted-foreground"
+    },
+    "imports": [
+      "@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');"
+    ]
+  },
+  "colors": {
+    "palette": {
+      "background": "#050505",
+      "foreground": "#FAFAFA",
+      "card": "#0A0A0A",
+      "card_foreground": "#FFFFFF",
+      "popover": "#0F0F0F",
+      "popover_foreground": "#FAFAFA",
+      "primary": "#D4AF37",
+      "primary_foreground": "#000000",
+      "secondary": "#1A1A1A",
+      "secondary_foreground": "#FAFAFA",
+      "muted": "#262626",
+      "muted_foreground": "#A3A3A3",
+      "accent": "#E63946",
+      "accent_foreground": "#FFFFFF",
+      "destructive": "#991B1B",
+      "destructive_foreground": "#FAFAFA",
+      "border": "#262626",
+      "input": "#262626",
+      "ring": "#D4AF37"
+    },
+    "gradients": {
+      "gold_rush": "linear-gradient(135deg, #D4AF37 0%, #B4941F 100%)",
+      "cinema_red": "linear-gradient(135deg, #E63946 0%, #9E1B25 100%)",
+      "void_fade": "linear-gradient(to top, #050505 0%, transparent 100%)"
+    }
+  },
+  "layout": {
+    "grid_system": "Bento Grid (Mode A for Marketing, Mode B for Dashboard)",
+    "container_padding": "p-4 md:p-8 lg:p-12",
+    "spacing_scale": "Relaxed (gap-6 to gap-12)",
+    "border_radius": {
+      "default": "rounded-none",
+      "card": "rounded-3xl",
+      "button": "rounded-full"
+    }
+  },
+  "visual_enhancers": {
+    "texture": "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E\")",
+    "glassmorphism": "backdrop-blur-xl bg-black/40 border border-white/10",
+    "shadows": {
+      "glow": "0 0 40px -10px rgba(212, 175, 55, 0.3)",
+      "depth": "0 20px 40px -20px rgba(0,0,0,0.8)"
+    }
+  },
+  "components": {
+    "swipe_card": {
+      "description": "The hero interaction. 3:4 aspect ratio. Physical feel.",
+      "styles": "relative w-full max-w-md aspect-[3/4] rounded-3xl overflow-hidden shadow-2xl border border-white/10 select-none cursor-grab active:cursor-grabbing"
+    },
+    "button_primary": {
+      "styles": "h-12 px-8 rounded-full bg-[#D4AF37] text-black font-bold uppercase tracking-wide hover:bg-[#B4941F] transition-colors duration-300 shadow-[0_0_20px_rgba(212,175,55,0.4)]"
+    },
+    "button_secondary": {
+      "styles": "h-12 px-8 rounded-full bg-white/10 text-white font-medium hover:bg-white/20 backdrop-blur-md transition-colors duration-300"
+    },
+    "input_field": {
+      "styles": "bg-transparent border-b-2 border-white/20 text-2xl md:text-4xl py-4 focus:border-[#D4AF37] focus:outline-none placeholder:text-white/20 transition-colors duration-300 font-display"
+    }
+  },
+  "assets": {
+    "icons": {
+      "library": "lucide-react",
+      "style": "stroke-1"
+    },
+    "images": {
+      "cinematic_grading": [
+        "https://images.unsplash.com/photo-1762792668677-29c149b70e9b?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "https://images.unsplash.com/photo-1602404454154-a2dc6b0a7223?crop=entropy&cs=srgb&fm=jpg&q=85"
+      ],
+      "typography_examples": [
+        "https://images.unsplash.com/photo-1762354766808-92f8ad416174?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "https://images.unsplash.com/photo-1558707538-c56435bdcdf3?crop=entropy&cs=srgb&fm=jpg&q=85"
+      ],
+      "abstract_textures": [
+        "https://images.unsplash.com/photo-1686061592315-af9342dc8d74?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "https://images.unsplash.com/photo-1529257608761-0ef888111001?crop=entropy&cs=srgb&fm=jpg&q=85"
+      ]
+    }
+  },
+  "accessibility": {
+    "contrast_check": "Ensure Gold (#D4AF37) is only used on Black backgrounds for large text or graphical elements. Use White for body text.",
+    "reduced_motion": "Disable swipe animations if prefers-reduced-motion is true. Provide button alternatives (Like/Dislike buttons) below the card deck."
+  },
+  "universal_guidelines": [
+    "Use 'Syne' for all Headings (h1-h3).",
+    "Use 'Manrope' for all body text and UI elements.",
+    "Always apply the noise texture to the body background.",
+    "Use the 'Void Black' theme. No light mode.",
+    "Swipe cards must have a 'throw' physics feel.",
+    "Form inputs should look like filling out a movie script (underlined, minimal).",
+    "Dashboard should look like a video editing timeline or bin.",
+    "Use 'sonner' for all toast notifications."
+  ],
+  "instructions_to_main_agent": {
+    "setup": "Install fonts: Syne and Manrope. Configure Tailwind colors as specified. Add noise texture SVG to globals.",
+    "swipe_logic": "Implement a deck stack. Top card is interactive. Swiping removes it and reveals the next. Preload images.",
+    "charts": "Use Recharts for the Preference Scoring (Radar Chart or Bar Chart) styled with Gold/Red strokes."
+  }
+}
