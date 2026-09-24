@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -22,6 +22,7 @@ import io
 import random
 import asyncio
 import requests
+from concurrent.futures import ThreadPoolExecutor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -477,15 +478,24 @@ CATEGORY_LABELS_FOR_CONFLICTS = {
     "motion_graphics": "Motion Graphics",
 }
 
-def find_style_conflicts(selections: Dict[str, str]) -> List[Dict[str, str]]:
-    """selections: {category: title}. Returns a list of human-readable conflict warnings
-    between any two currently-selected styles whose vibes contradict each other."""
-    items = [(cat, title) for cat, title in selections.items() if title]
+def find_style_conflicts(selections: Dict[str, List[str]]) -> List[Dict[str, str]]:
+    """selections: {category: [titles]} \u2014 a category can now have more than one style picked.
+    Returns a list of human-readable conflict warnings between any two currently-selected
+    styles (from DIFFERENT categories) whose vibes contradict each other. Two styles picked
+    within the same category aren't compared against each other \u2014 that's just exploring
+    options within one category, not a stylistic contradiction."""
+    items = []
+    for cat, titles in selections.items():
+        for title in (titles or []):
+            if title:
+                items.append((cat, title))
     conflicts = []
     for i in range(len(items)):
         for j in range(i + 1, len(items)):
             cat_a, title_a = items[i]
             cat_b, title_b = items[j]
+            if cat_a == cat_b:
+                continue
             vibes_a = VIBE_TAGS.get(title_a, set())
             vibes_b = VIBE_TAGS.get(title_b, set())
             for vibe_x, vibe_y in CONFLICTING_VIBE_PAIRS:
@@ -515,7 +525,7 @@ async def get_video_types():
     return result
 
 class ConflictCheckRequest(BaseModel):
-    selections: Dict[str, str]
+    selections: Dict[str, List[str]]
 
 @api_router.get("/suggestions/{video_type}")
 async def get_suggestions(video_type: str):
@@ -524,9 +534,54 @@ async def get_suggestions(video_type: str):
 
 @api_router.post("/check-conflicts")
 async def check_conflicts(input: ConflictCheckRequest):
-    """Given the current selections {category: title}, flags any pairs whose vibes contradict."""
+    """Given the current selections {category: [titles]}, flags any cross-category pairs whose vibes contradict."""
     conflicts = find_style_conflicts(input.selections)
     return {"conflicts": conflicts}
+
+# Bucket in Supabase Storage where voice notes and uploaded reference files live.
+# It must exist and be public (create it once in the Supabase dashboard, or the code
+# will attempt to create it on first use below).
+UPLOAD_BUCKET = os.environ.get('SUPABASE_UPLOAD_BUCKET', 'uploads')
+
+def _ensure_bucket():
+    """Makes sure the public upload bucket exists. Safe to call repeatedly."""
+    try:
+        supabase.storage.get_bucket(UPLOAD_BUCKET)
+    except Exception:
+        try:
+            supabase.storage.create_bucket(UPLOAD_BUCKET, options={"public": True})
+        except Exception as e:
+            logger.warning("Could not create bucket %s: %s", UPLOAD_BUCKET, e)
+
+def _upload_bytes_to_storage(data: bytes, filename: str, content_type: str) -> str:
+    """Uploads raw bytes to Supabase Storage and returns a permanent public URL.
+    This replaces the old approach of storing browser blob: URLs, which only worked
+    inside the tab that created them and were dead by the time the brief loaded."""
+    _ensure_bucket()
+    ext = os.path.splitext(filename)[1] or ''
+    object_path = f"{uuid.uuid4().hex}{ext}"
+    supabase.storage.from_(UPLOAD_BUCKET).upload(
+        object_path,
+        data,
+        {"content-type": content_type or "application/octet-stream"},
+    )
+    return supabase.storage.from_(UPLOAD_BUCKET).get_public_url(object_path)
+
+@api_router.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """Accepts a voice note or reference file, stores it permanently in Supabase Storage,
+    and returns a real public URL the brief page (and PDF exports) can actually load."""
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty file")
+    try:
+        public_url = await asyncio.to_thread(
+            _upload_bytes_to_storage, contents, file.filename or "upload", file.content_type
+        )
+    except Exception as e:
+        logger.error("Upload failed: %s", e)
+        raise HTTPException(status_code=500, detail="Upload failed")
+    return {"url": public_url, "name": file.filename}
 
 @api_router.post("/projects", response_model=Project)
 async def create_project(input: ProjectCreate):
@@ -636,11 +691,16 @@ async def get_brief(project_id: str):
     project = await asyncio.to_thread(project_get, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
-    swipes = await asyncio.to_thread(swipes_get_for_project, project_id)
-    
+
+    # These two calls are independent (different tables, no shared data) so we
+    # run them concurrently instead of one-after-the-other — this alone cuts
+    # the brief endpoint's own latency by roughly a third on top of project_get.
+    swipes, all_cards = await asyncio.gather(
+        asyncio.to_thread(swipes_get_for_project, project_id),
+        asyncio.to_thread(get_all_cards_from_db),
+    )
+
     liked_swipes = [s for s in swipes if s['action'] in ['like', 'love']]
-    all_cards = await asyncio.to_thread(get_all_cards_from_db)
     
     def analyze_category(category_name: str):
         category_swipes = [s for s in liked_swipes if s['card_id'].startswith(category_name)]
@@ -818,6 +878,28 @@ async def export_pdf(project_id: str):
                 meta_style
             ))
 
+    # Reference links / files the client attached \u2014 rendered as real clickable links.
+    references = project.get('references') or []
+    if references:
+        story.append(Spacer(1, 0.15*inch))
+        story.append(Paragraph("References", ParagraphStyle(
+            'RefHeading', parent=styles['Heading3'], fontSize=11, textColor=HexColor('#222222'), spaceAfter=4
+        )))
+        link_style = ParagraphStyle('RefLink', parent=body_style, textColor=ACCENT)
+        for ref in references:
+            url = (ref.get('value') or '').strip()
+            if not url:
+                continue
+            label = ref.get('name') or url
+            safe_label = label.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            # Only pasted web links become clickable. Uploaded files are stored inline as
+            # data: URLs (huge), so we just list their name instead of embedding the blob.
+            if url.lower().startswith(('http://', 'https://')):
+                safe_url = url.replace('&', '&amp;')
+                story.append(Paragraph(f'&bull; <link href="{safe_url}"><u>{safe_label}</u></link>', link_style))
+            else:
+                story.append(Paragraph(f'&bull; {safe_label} (attached file)', body_style))
+
     # 3. Style Preferences (real bipolar tone data, not fake "Balanced 50%")
     story.append(Paragraph("3. Style Preferences", heading_style))
     tone_axes = [
@@ -885,14 +967,36 @@ async def export_pdf(project_id: str):
         headers={"Content-Disposition": f"attachment; filename=brief_{project_id}.pdf"}
     )
 
-def _download_image_for_pdf(url, timeout=6):
-    """Downloads an image for embedding in a canvas-based PDF. Returns None on any failure."""
+def _download_image_for_pdf(url, timeout=4, cache=None):
+    """Downloads an image for embedding in a canvas-based PDF. Returns None on any failure.
+    When a `cache` dict is passed (see _prefetch_images_for_pdf below), a pre-fetched
+    result is returned instantly instead of making a fresh request."""
+    if cache is not None and url in cache:
+        return cache[url]
     try:
         resp = requests.get(url, timeout=timeout)
         resp.raise_for_status()
         return ImageReader(io.BytesIO(resp.content))
     except Exception:
         return None
+
+def _prefetch_images_for_pdf(urls, timeout=4, max_workers=8):
+    """Downloads several images concurrently instead of one-by-one, which is what made
+    Visual Deck generation slow (5 categories x up to 5 gallery images each, all fetched
+    sequentially over the network). Returns {url: ImageReader-or-None}."""
+    unique_urls = list(dict.fromkeys(u for u in urls if u))
+    if not unique_urls:
+        return {}
+    results = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_download_image_for_pdf, url, timeout): url for url in unique_urls}
+        for future in futures:
+            url = futures[future]
+            try:
+                results[url] = future.result()
+            except Exception:
+                results[url] = None
+    return results
 
 def _draw_dark_background(c, width, height):
     c.setFillColor(HexColor('#0A0A0A'))
@@ -924,6 +1028,18 @@ async def export_visual_deck(project_id: str):
 
     brief_data = await get_brief(project_id)
 
+    # Building the deck involves several blocking network calls (image downloads) and
+    # CPU-bound PDF drawing. Running it in a worker thread keeps the event loop free so
+    # this one request doesn't stall every other request the server is handling.
+    buffer = await asyncio.to_thread(_build_visual_deck_pdf, project, brief_data)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=visual_deck_{project_id}.pdf"}
+    )
+
+def _build_visual_deck_pdf(project: dict, brief_data) -> io.BytesIO:
     width, height = letter
     margin = 60
     ACCENT = HexColor('#5EC8E0')
@@ -943,6 +1059,17 @@ async def export_visual_deck(project_id: str):
         ("MOTION", brief_data.motion_graphics),
     ]
     total_selections = sum((c_data or {}).get('count', 0) for _, c_data in category_defs)
+
+    # Fetch every image this deck will need up front, in parallel, instead of one request
+    # at a time inline while drawing each page — this is what was making the deck slow.
+    _image_urls_needed = []
+    for _, c_data in category_defs:
+        c_data = c_data or {}
+        if c_data.get('gallery'):
+            _image_urls_needed.extend(c_data['gallery'][:5])
+        elif c_data.get('image_url'):
+            _image_urls_needed.append(c_data['image_url'])
+    _image_cache = _prefetch_images_for_pdf(_image_urls_needed)
 
     # --- Page 1: Cover ---
     _draw_dark_background(c, width, height)
@@ -1005,7 +1132,8 @@ async def export_visual_deck(project_id: str):
 
     additional_notes = (project.get('additional_notes') or '').strip()
     voice_note_url = project.get('voice_note_url')
-    if additional_notes or voice_note_url:
+    references = project.get('references') or []
+    if additional_notes or voice_note_url or references:
         ny = y - ((len(info_pairs) + 1) // 2) * 90 - 30
         if additional_notes:
             c.setFont('Helvetica-Bold', 10)
@@ -1014,6 +1142,29 @@ async def export_visual_deck(project_id: str):
             ny -= 16
             ny = _draw_wrapped_text(c, additional_notes, margin, ny, width - 2 * margin, 'Helvetica', 9.5, GRAY, leading=14)
             ny -= 8
+        if references:
+            c.setFont('Helvetica-Bold', 10)
+            c.setFillColor(ACCENT)
+            c.drawString(margin, ny, "REFERENCES")
+            ny -= 16
+            for ref in references:
+                url = (ref.get('value') or '').strip()
+                if not url:
+                    continue
+                is_web = url.lower().startswith(('http://', 'https://'))
+                label = ref.get('name') or url
+                display = label if len(label) <= 88 else label[:85] + '...'
+                if not is_web:
+                    display = f"{display} (attached file)"
+                c.setFont('Helvetica', 9)
+                c.setFillColor(WHITE)
+                text_w = c.stringWidth(f"\u2022 {display}", 'Helvetica', 9)
+                c.drawString(margin, ny, f"\u2022 {display}")
+                # Only real web links become clickable; inline data: URLs are skipped.
+                if is_web:
+                    c.linkURL(url, (margin, ny - 2, margin + text_w, ny + 10), relative=0)
+                ny -= 14
+            ny -= 6
         if voice_note_url:
             c.setFont('Helvetica', 8)
             c.setFillColor(GRAY)
@@ -1086,7 +1237,7 @@ async def export_visual_deck(project_id: str):
             hero_width = (width - 2 * margin) * 0.58
             support_col_width = (width - 2 * margin) - hero_width - gap
 
-            hero_img = _download_image_for_pdf(hero_url)
+            hero_img = _download_image_for_pdf(hero_url, cache=_image_cache)
             if hero_img:
                 c.drawImage(hero_img, margin, top_y - content_height, width=hero_width, height=content_height,
                              preserveAspectRatio=True, anchor='c', mask='auto')
@@ -1099,7 +1250,7 @@ async def export_visual_deck(project_id: str):
                 sx = margin + hero_width + gap
                 sy = top_y
                 for url in support_urls:
-                    img = _download_image_for_pdf(url)
+                    img = _download_image_for_pdf(url, cache=_image_cache)
                     if img:
                         c.drawImage(img, sx, sy - cell_height, width=support_col_width, height=cell_height,
                                      preserveAspectRatio=True, anchor='c', mask='auto')
@@ -1145,7 +1296,7 @@ async def export_visual_deck(project_id: str):
 
         else:
             # EDITING, COLOR, MOTION \u2014 a real representative image
-            img = _download_image_for_pdf(image_url) if image_url else None
+            img = _download_image_for_pdf(image_url, cache=_image_cache) if image_url else None
             if img:
                 c.drawImage(img, margin, top_y - content_height, width=width - 2 * margin, height=content_height,
                              preserveAspectRatio=True, anchor='c', mask='auto')
@@ -1191,12 +1342,7 @@ async def export_visual_deck(project_id: str):
 
     c.save()
     buffer.seek(0)
-
-    return StreamingResponse(
-        buffer,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=visual_deck_{project_id}.pdf"}
-    )
+    return buffer
 
 @app.on_event("startup")
 async def on_startup():

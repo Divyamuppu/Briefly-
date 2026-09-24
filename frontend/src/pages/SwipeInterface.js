@@ -19,6 +19,9 @@ const API = `${BACKEND_URL}/api`;
 
 const CATEGORY_ORDER = ['editing_style', 'music_style', 'color_grading', 'typography', 'motion_graphics'];
 
+// Clients see every option in a category but can select at most this many per category.
+const MAX_PICKS_PER_CATEGORY = 3;
+
 const CATEGORY_META = {
   editing_style: { label: 'Editing Style', hint: 'How should the video be cut and paced?' },
   music_style: { label: 'Music', hint: 'What should the soundtrack feel like?' },
@@ -93,7 +96,8 @@ const SwipeInterface = () => {
   const currentCards = cardsByCategory[currentCategory] || [];
   const CardRenderer = CARD_RENDERERS[currentCategory];
   const isLastStep = categoryStep === CATEGORY_ORDER.length - 1;
-  const hasSelectionForStep = Boolean(selections[currentCategory]);
+  const currentSelections = selections[currentCategory] || [];
+  const hasSelectionForStep = currentSelections.length > 0;
   const rawRecommendation = recommendations[currentCategory];
   const recommendedTitles = Array.isArray(rawRecommendation)
     ? rawRecommendation
@@ -103,10 +107,11 @@ const SwipeInterface = () => {
 
   const checkConflicts = async (nextSelections) => {
     const selectionTitles = {};
-    Object.entries(nextSelections).forEach(([category, card]) => {
-      if (card) selectionTitles[category] = card.title;
+    Object.entries(nextSelections).forEach(([category, cards]) => {
+      if (cards && cards.length) selectionTitles[category] = cards.map((c) => c.title);
     });
-    if (Object.keys(selectionTitles).length < 2) {
+    const totalPicks = Object.values(selectionTitles).reduce((sum, titles) => sum + titles.length, 0);
+    if (totalPicks < 2) {
       setActiveConflicts([]);
       return;
     }
@@ -118,8 +123,20 @@ const SwipeInterface = () => {
     }
   };
 
-  const selectCard = (card) => {
-    const next = { ...selections, [currentCategory]: card };
+  // Multi-select with a cap: a client can pick up to MAX_PICKS_PER_CATEGORY options
+  // in a single category. Tapping a selected card removes it; tapping a new one adds it,
+  // unless the cap is already reached (then we nudge them to deselect one first).
+  const toggleCard = (card) => {
+    const existing = selections[currentCategory] || [];
+    const alreadySelected = existing.some((c) => c.title === card.title);
+    if (!alreadySelected && existing.length >= MAX_PICKS_PER_CATEGORY) {
+      toast.error(`You can select up to ${MAX_PICKS_PER_CATEGORY} options in this category`);
+      return;
+    }
+    const nextForCategory = alreadySelected
+      ? existing.filter((c) => c.title !== card.title)
+      : [...existing, card];
+    const next = { ...selections, [currentCategory]: nextForCategory };
     setSelections(next);
     checkConflicts(next);
   };
@@ -143,18 +160,21 @@ const SwipeInterface = () => {
   const finishAndSubmit = async () => {
     setSubmitting(true);
     try {
-      await Promise.all(
-        CATEGORY_ORDER.map((category) => {
-          const card = selections[category];
-          if (!card) return Promise.resolve();
+      const swipeRequests = [];
+      CATEGORY_ORDER.forEach((category) => {
+        const cards = selections[category] || [];
+        cards.forEach((card) => {
           const cardId = `${category}_${card.title.replace(/\s+/g, '_').toLowerCase()}`;
-          return axios.post(`${API}/swipes`, {
-            project_id: projectId,
-            card_id: cardId,
-            action: 'love',
-          });
-        })
-      );
+          swipeRequests.push(
+            axios.post(`${API}/swipes`, {
+              project_id: projectId,
+              card_id: cardId,
+              action: 'love',
+            })
+          );
+        });
+      });
+      await Promise.all(swipeRequests);
       navigate(`/brief/${projectId}`);
     } catch (error) {
       console.error('Error saving selections:', error);
@@ -185,6 +205,10 @@ const SwipeInterface = () => {
             {CATEGORY_META[currentCategory]?.label}
           </h1>
           <p className="text-sm text-muted-foreground">{CATEGORY_META[currentCategory]?.hint}</p>
+          <p className="text-xs text-muted-foreground/80">
+            Tap to select — up to {MAX_PICKS_PER_CATEGORY} per category
+            {` · ${currentSelections.length}/${MAX_PICKS_PER_CATEGORY} selected`}
+          </p>
         </div>
 
         <Progress value={progress} className="h-1.5 bg-secondary" data-testid="category-progress" />
@@ -223,14 +247,14 @@ const SwipeInterface = () => {
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
           >
             {currentCards.map((card) => {
-              const isSelected = selections[currentCategory]?.title === card.title;
+              const isSelected = currentSelections.some((c) => c.title === card.title);
               const isRecommended = recommendedTitles.includes(card.title);
               return (
                 <button
                   key={card.title}
                   type="button"
                   data-testid={`option-${currentCategory}-${card.title.replace(/\s+/g, '_').toLowerCase()}`}
-                  onClick={() => selectCard(card)}
+                  onClick={() => toggleCard(card)}
                   className={`relative text-left rounded-3xl overflow-hidden aspect-[3/4] border transition-all duration-300 ${
                     isSelected
                       ? 'ring-2 ring-primary border-primary shadow-[0_0_40px_-10px_rgba(147,112,246,0.5)] scale-[1.02]'

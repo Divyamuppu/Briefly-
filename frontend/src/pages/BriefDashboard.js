@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Download, Share2, Home, Loader2, Film, Music, Palette, Type, Link as LinkIcon, Layers } from 'lucide-react';
@@ -14,19 +14,35 @@ const BriefDashboard = () => {
   const [brief, setBrief] = useState(null);
   const [loading, setLoading] = useState(true);
   const [additionalNotes, setAdditionalNotes] = useState('');
-  const [notesSaveTimeout, setNotesSaveTimeout] = useState(null);
   const [notesSaving, setNotesSaving] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [downloadingDeck, setDownloadingDeck] = useState(false);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Refs (not state) so the debounce timer and the "has this value actually
+  // reached the server yet" flag are always read/written synchronously —
+  // state updates are async and were letting a download fire against a stale
+  // closure before the save had gone out.
+  const notesTimeoutRef = useRef(null);
+  const lastSavedNotesRef = useRef('');
+  const latestNotesRef = useRef('');
+
   useEffect(() => {
     fetchBrief();
+    // Flush any pending notes save if the user navigates away mid-debounce.
+    return () => {
+      if (notesTimeoutRef.current) clearTimeout(notesTimeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   const fetchBrief = async () => {
     try {
       const response = await axios.get(`${API}/brief/${projectId}`);
       setBrief(response.data);
-      setAdditionalNotes(response.data?.project_details?.additional_notes || '');
+      const notes = response.data?.project_details?.additional_notes || '';
+      setAdditionalNotes(notes);
+      lastSavedNotesRef.current = notes;
+      latestNotesRef.current = notes;
       setLoading(false);
     } catch (error) {
       console.error('Error fetching brief:', error);
@@ -35,25 +51,53 @@ const BriefDashboard = () => {
     }
   };
 
+  const saveNotes = useCallback(async (value) => {
+    if (value === lastSavedNotesRef.current) return; // nothing changed, skip the round trip
+    setNotesSaving(true);
+    try {
+      await axios.patch(`${API}/projects/${projectId}/notes`, { additional_notes: value });
+      lastSavedNotesRef.current = value;
+    } catch (error) {
+      console.error('Error saving notes:', error);
+      toast.error('Failed to save notes');
+      throw error;
+    } finally {
+      setNotesSaving(false);
+    }
+  }, [projectId]);
+
   const handleNotesChange = (value) => {
     setAdditionalNotes(value);
-    if (notesSaveTimeout) clearTimeout(notesSaveTimeout);
-    const timeout = setTimeout(async () => {
-      setNotesSaving(true);
-      try {
-        await axios.patch(`${API}/projects/${projectId}/notes`, { additional_notes: value });
-      } catch (error) {
-        console.error('Error saving notes:', error);
-        toast.error('Failed to save notes');
-      } finally {
-        setNotesSaving(false);
-      }
+    latestNotesRef.current = value;
+    if (notesTimeoutRef.current) clearTimeout(notesTimeoutRef.current);
+    notesTimeoutRef.current = setTimeout(() => {
+      saveNotes(latestNotesRef.current);
     }, 800);
-    setNotesSaveTimeout(timeout);
+  };
+
+  // Guarantees the PDF/Visual Deck is generated from whatever notes are
+  // currently on screen, even if the 800ms debounce hasn't fired yet —
+  // previously a download triggered right after typing would ship the
+  // brief with the OLD notes because the save was still pending.
+  const flushPendingNotes = async () => {
+    if (notesTimeoutRef.current) {
+      clearTimeout(notesTimeoutRef.current);
+      notesTimeoutRef.current = null;
+    }
+    if (latestNotesRef.current !== lastSavedNotesRef.current) {
+      try {
+        await saveNotes(latestNotesRef.current);
+      } catch (error) {
+        // saveNotes already toasted the failure; let the caller decide whether to proceed
+        throw error;
+      }
+    }
   };
 
   const handleDownloadPDF = async () => {
+    setDownloadingPdf(true);
     try {
+      await flushPendingNotes(); // make sure the export reflects what's on screen, not a stale save
       const response = await axios.get(`${API}/brief/${projectId}/pdf`, {
         responseType: 'blob'
       });
@@ -68,11 +112,15 @@ const BriefDashboard = () => {
     } catch (error) {
       console.error('Error downloading PDF:', error);
       toast.error('Failed to download PDF');
+    } finally {
+      setDownloadingPdf(false);
     }
   };
 
   const handleDownloadVisualDeck = async () => {
+    setDownloadingDeck(true);
     try {
+      await flushPendingNotes(); // make sure the export reflects what's on screen, not a stale save
       const response = await axios.get(`${API}/brief/${projectId}/visual-deck`, {
         responseType: 'blob'
       });
@@ -87,6 +135,8 @@ const BriefDashboard = () => {
     } catch (error) {
       console.error('Error downloading visual deck:', error);
       toast.error('Failed to download visual deck');
+    } finally {
+      setDownloadingDeck(false);
     }
   };
 
@@ -372,19 +422,29 @@ const BriefDashboard = () => {
           <Button
             data-testid="download-pdf-btn"
             onClick={handleDownloadPDF}
-            className="h-12 px-8 rounded-full bg-primary text-white font-bold uppercase tracking-wide hover:bg-primary/90 transition-all duration-300 shadow-md hover:shadow-lg"
+            disabled={downloadingPdf}
+            className="h-12 px-8 rounded-full bg-primary text-white font-bold uppercase tracking-wide hover:bg-primary/90 transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <Download className="mr-2 w-5 h-5" />
-            Download PDF
+            {downloadingPdf ? (
+              <Loader2 className="mr-2 w-5 h-5 animate-spin" />
+            ) : (
+              <Download className="mr-2 w-5 h-5" />
+            )}
+            {downloadingPdf ? 'Generating...' : 'Download PDF'}
           </Button>
           <Button
             data-testid="download-visual-deck-btn"
             onClick={handleDownloadVisualDeck}
+            disabled={downloadingDeck}
             variant="outline"
-            className="h-12 px-8 rounded-full bg-card border-2 border-primary text-primary font-bold uppercase tracking-wide hover:bg-primary/10 transition-all duration-300 shadow-md hover:shadow-lg"
+            className="h-12 px-8 rounded-full bg-card border-2 border-primary text-primary font-bold uppercase tracking-wide hover:bg-primary/10 transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <Layers className="mr-2 w-5 h-5" />
-            Visual Deck
+            {downloadingDeck ? (
+              <Loader2 className="mr-2 w-5 h-5 animate-spin" />
+            ) : (
+              <Layers className="mr-2 w-5 h-5" />
+            )}
+            {downloadingDeck ? 'Generating...' : 'Visual Deck'}
           </Button>
           <Button
             data-testid="share-btn"

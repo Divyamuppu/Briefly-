@@ -40,9 +40,24 @@ const CreateProject = () => {
   });
 
   const [isRecording, setIsRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState(null);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState(null);
+  const [uploadingVoice, setUploadingVoice] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [referenceInput, setReferenceInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Converts a Blob/File to a base64 data URL. We store the recording and any
+  // uploaded reference file directly as a data URL in the project record — so it
+  // persists with no Supabase Storage bucket, no permissions setup, and no
+  // browser-only blob: URL that dies the moment you leave this page (that was why
+  // voice notes / files never showed up in the brief before).
+  const toDataUrl = (fileOrBlob) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(fileOrBlob);
+    });
 
   const startRecording = async () => {
     try {
@@ -52,11 +67,21 @@ const CreateProject = () => {
       const chunks = [];
 
       mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
         const blob = new Blob(chunks, { type: 'audio/webm' });
-        setAudioBlob(blob);
-        const url = URL.createObjectURL(blob);
-        setFormData({ ...formData, voice_note_url: url });
+        setAudioPreviewUrl(URL.createObjectURL(blob)); // instant local playback
+        setUploadingVoice(true);
+        try {
+          const dataUrl = await toDataUrl(blob); // permanent, self-contained
+          setFormData((prev) => ({ ...prev, voice_note_url: dataUrl }));
+          toast.success('Voice note saved');
+        } catch (error) {
+          console.error('Error saving voice note:', error);
+          toast.error('Could not save voice note');
+          setFormData((prev) => ({ ...prev, voice_note_url: null }));
+        } finally {
+          setUploadingVoice(false);
+        }
       };
 
       mediaRecorder.start();
@@ -73,30 +98,40 @@ const CreateProject = () => {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
       setIsRecording(false);
-      toast.success('Recording saved');
     }
   };
 
   const addReference = () => {
     if (referenceInput.trim()) {
-      setFormData({
-        ...formData,
-        references: [...formData.references, { type: 'url', value: referenceInput }]
-      });
+      // A pasted link is already a real URL — normalize it so it's always clickable.
+      let value = referenceInput.trim();
+      if (!/^https?:\/\//i.test(value)) value = `https://${value}`;
+      setFormData((prev) => ({
+        ...prev,
+        references: [...prev.references, { type: 'url', value }]
+      }));
       setReferenceInput('');
       toast.success('Reference added');
     }
   };
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setFormData({
-        ...formData,
-        references: [...formData.references, { type: 'file', value: url, name: file.name }]
-      });
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      const dataUrl = await toDataUrl(file);
+      setFormData((prev) => ({
+        ...prev,
+        references: [...prev.references, { type: 'file', value: dataUrl, name: file.name }],
+      }));
       toast.success('File added');
+    } catch (error) {
+      console.error('Error reading file:', error);
+      toast.error('Could not add file');
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -113,9 +148,21 @@ const CreateProject = () => {
       return;
     }
 
+    // Fold any link still sitting in the reference box (that wasn't "added" with the
+    // button) into the references list, so a link the user typed always gets saved —
+    // even if they forget to click the add button before submitting.
+    let references = [...formData.references];
+    const pending = referenceInput.trim();
+    if (pending) {
+      let value = pending;
+      if (!/^https?:\/\//i.test(value)) value = `https://${value}`;
+      references = [...references, { type: 'url', value }];
+    }
+    const payload = { ...formData, references };
+
     setSubmitting(true);
     try {
-      const response = await axios.post(`${API}/projects`, formData);
+      const response = await axios.post(`${API}/projects`, payload);
       const projectId = response.data.id;
 
       toast.success('Project created! Time to swipe.');
@@ -333,7 +380,7 @@ const CreateProject = () => {
               <Button type="button" onClick={addReference} size="sm" className="rounded-full bg-primary text-black hover:bg-primary/90">
                 <LinkIcon className="w-4 h-4" />
               </Button>
-              <Button type="button" onClick={() => fileInputRef.current?.click()} size="sm" className="rounded-full bg-primary text-black hover:bg-primary/90">
+              <Button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} size="sm" className="rounded-full bg-primary text-black hover:bg-primary/90 disabled:opacity-60">
                 <Upload className="w-4 h-4" />
               </Button>
               <input
@@ -364,11 +411,11 @@ const CreateProject = () => {
             <h2 className="text-xl font-semibold font-display text-foreground">Voice Note (Optional)</h2>
             <p className="text-sm text-muted-foreground">Record any additional thoughts or context</p>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               {!isRecording ? (
-                <Button type="button" onClick={startRecording} className="rounded-full bg-primary text-black hover:bg-primary/90" size="lg">
+                <Button type="button" onClick={startRecording} disabled={uploadingVoice} className="rounded-full bg-primary text-black hover:bg-primary/90 disabled:opacity-60" size="lg">
                   <Mic className="w-5 h-5 mr-2" />
-                  Start Recording
+                  {formData.voice_note_url ? 'Re-record' : 'Start Recording'}
                 </Button>
               ) : (
                 <Button type="button" onClick={stopRecording} className="rounded-full bg-accent hover:bg-accent/90" size="lg">
@@ -376,21 +423,30 @@ const CreateProject = () => {
                   Stop Recording
                 </Button>
               )}
-              {audioBlob && (
-                <span className="text-sm text-primary">&check; Voice note recorded</span>
+              {uploadingVoice && (
+                <span className="text-sm text-muted-foreground">Saving voice note…</span>
+              )}
+              {!uploadingVoice && formData.voice_note_url && (
+                <span className="text-sm text-primary">&check; Voice note saved</span>
               )}
             </div>
+
+            {audioPreviewUrl && (
+              <audio controls className="w-full mt-2" src={audioPreviewUrl}>
+                Your browser does not support the audio element.
+              </audio>
+            )}
           </div>
 
           <div className="flex justify-center pt-4 pb-24">
             <Button
               data-testid="start-swiping-btn"
               type="submit"
-              disabled={submitting}
+              disabled={submitting || uploadingVoice || uploadingFile}
               className="h-16 px-16 text-lg rounded-full bg-primary text-black font-bold uppercase tracking-wide hover:bg-primary/90 transition-all duration-300 shadow-[0_0_30px_-8px_rgba(147,112,246,0.5)] disabled:opacity-50 group"
             >
-              {submitting ? 'Creating Project...' : 'Start Swiping'}
-              {!submitting && <ArrowRight className="ml-3 w-5 h-5 group-hover:translate-x-1 transition-transform" />}
+              {submitting ? 'Creating Project...' : (uploadingVoice || uploadingFile) ? 'Uploading…' : 'Start Swiping'}
+              {!submitting && !uploadingVoice && !uploadingFile && <ArrowRight className="ml-3 w-5 h-5 group-hover:translate-x-1 transition-transform" />}
             </Button>
           </div>
         </form>
