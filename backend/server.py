@@ -2,7 +2,12 @@ from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
-from supabase import create_client, Client
+from neon_db import (
+    cards_get_all, cards_resync_category,
+    video_types_get_all, video_types_resync,
+    project_get, project_create, project_update,
+    swipe_create, swipes_get_for_project,
+)
 import os
 import logging
 from pathlib import Path
@@ -32,78 +37,6 @@ logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
-
-# --- Supabase setup ---
-supabase_url = os.environ['SUPABASE_URL']
-supabase_key = os.environ['SUPABASE_KEY']
-supabase: Client = create_client(supabase_url, supabase_key)
-
-# --- Thin helpers that mirror the old Firebase ref interface, so the rest of this
-# file's logic (which was written against Firebase's .get()/.set()/.update() shape)
-# needed minimal changes. Cards and video_types store everything in a flexible
-# 'data' JSONB column; projects do the same. Swipes are a plain relational table. ---
-
-def _card_row_to_dict(row: dict) -> dict:
-    """Flattens a Supabase cards row (id/category/slug/data) into the flat dict
-    shape the rest of the app expects (same shape Firebase used to return)."""
-    merged = dict(row.get('data') or {})
-    merged['_slug'] = row['slug']
-    return merged
-
-def cards_get_all() -> Dict[str, List[dict]]:
-    """Returns {category: [card_dict, ...]} exactly like the old get_all_cards_from_db()."""
-    resp = supabase.table('cards').select('*').execute()
-    result: Dict[str, List[dict]] = {}
-    for row in (resp.data or []):
-        result.setdefault(row['category'], []).append(_card_row_to_dict(row))
-    return result
-
-def cards_resync_category(category: str, items: List[dict]):
-    """Deletes all existing rows for a category and re-inserts fresh ones from code,
-    keyed by slug (matches the old resync_category_cards behavior)."""
-    supabase.table('cards').delete().eq('category', category).execute()
-    rows = [{"category": category, "slug": _slug(item["title"]), "data": item} for item in items]
-    if rows:
-        supabase.table('cards').insert(rows).execute()
-
-def video_types_get_all() -> Dict[str, dict]:
-    resp = supabase.table('video_types').select('*').execute()
-    return {row['id']: row['data'] for row in (resp.data or [])}
-
-def video_types_resync(seed_data: Dict[str, dict]):
-    supabase.table('video_types').delete().neq('id', '').execute()
-    rows = [{"id": type_id, "data": data} for type_id, data in seed_data.items()]
-    if rows:
-        supabase.table('video_types').insert(rows).execute()
-
-def project_get(project_id: str) -> Optional[dict]:
-    resp = supabase.table('projects').select('*').eq('id', project_id).execute()
-    if not resp.data:
-        return None
-    row = resp.data[0]
-    merged = dict(row.get('data') or {})
-    merged['id'] = row['id']
-    return merged
-
-def project_create(project_id: str, data: dict):
-    supabase.table('projects').insert({"id": project_id, "data": data}).execute()
-
-def project_update(project_id: str, updates: dict):
-    existing = project_get(project_id)
-    if existing is None:
-        raise ValueError(f"Project {project_id} not found")
-    merged = {**existing, **updates}
-    merged.pop('id', None)
-    supabase.table('projects').update({"data": merged}).eq('id', project_id).execute()
-
-def swipe_create(swipe_id: str, project_id: str, card_id: str, action: str):
-    supabase.table('swipes').insert({
-        "id": swipe_id, "project_id": project_id, "card_id": card_id, "action": action
-    }).execute()
-
-def swipes_get_for_project(project_id: str) -> List[dict]:
-    resp = supabase.table('swipes').select('*').eq('project_id', project_id).execute()
-    return resp.data or []
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -192,7 +125,7 @@ class BriefSummary(BaseModel):
 # AI-Generated Card Data with Enhanced Media
 CARD_SEED_DATA = {
     "editing_style": [
-        {"title": "Fast-Paced Social Cuts", "description": "Quick, energetic transitions every 1-2 seconds.", "metadata": {"pace": "fast", "shot_duration": "1-2s"}, "video_url": "https://assets.mixkit.co/videos/46352/46352-360.mp4", "image_url": "https://images.pexels.com/photos/6255898/pexels-photo-6255898.jpeg?auto=compress&cs=tinysrgb&w=800"},
+        {"title": "Fast-Paced Social Cuts", "description": "Quick, energetic transitions every 1-2 seconds.", "metadata": {"pace": "fast", "shot_duration": "1-2s"}, "video_url": "/assets/video-types/fast_pace_cut.mp4", "image_url": "https://images.pexels.com/photos/6255898/pexels-photo-6255898.jpeg?auto=compress&cs=tinysrgb&w=800"},
         {"title": "Cinematic Slow Pacing", "description": "Deliberate, measured cuts emphasizing mood.", "metadata": {"pace": "slow", "shot_duration": "5-8s"}, "video_url": "https://assets.mixkit.co/videos/5565/5565-360.mp4", "image_url": "https://picsum.photos/id/24/800/1000"},
         {"title": "Documentary Style", "description": "Natural, interview-based with b-roll overlay.", "metadata": {"pace": "medium", "shot_duration": "3-5s"}, "video_url": "https://assets.mixkit.co/videos/6052/6052-360.mp4", "image_url": "https://picsum.photos/id/31/800/1000", "gallery": ["https://images.pexels.com/photos/10464783/pexels-photo-10464783.jpeg?auto=compress&cs=tinysrgb&w=800", "https://images.pexels.com/photos/10464790/pexels-photo-10464790.jpeg?auto=compress&cs=tinysrgb&w=800", "https://images.pexels.com/photos/10464451/pexels-photo-10464451.jpeg?auto=compress&cs=tinysrgb&w=800", "https://images.pexels.com/photos/10464470/pexels-photo-10464470.jpeg?auto=compress&cs=tinysrgb&w=800", "https://images.pexels.com/photos/10464792/pexels-photo-10464792.jpeg?auto=compress&cs=tinysrgb&w=800"]},
         {"title": "Music Video Style", "description": "Beat-synced editing with creative transitions.", "metadata": {"pace": "fast", "shot_duration": "0.5-2s"}, "video_url": "https://assets.mixkit.co/5tkfgsbokjzfgfu5emasqjkhym86", "image_url": "https://picsum.photos/id/38/800/1000"},
@@ -237,7 +170,7 @@ CARD_SEED_DATA = {
         {"title": "Futuristic Tech", "description": "Angular, digital-inspired letterforms. Innovative and cutting-edge.", "metadata": {"style": "sans-serif", "weight": "medium"}, "font_name": "Orbitron", "sample_text": "FUTURE TECH", "image_url": "https://picsum.photos/id/255/800/1000"},
     ],
     "motion_graphics": [
-        {"title": "Minimal Line Art", "description": "Simple, elegant line animations. Clean and professional.", "metadata": {"complexity": "low", "style": "minimal"}, "image_url": "https://picsum.photos/id/262/800/1000", "video_url": "https://assets.mixkit.co/videos/31510/31510-360.mp4"},
+        {"title": "Minimal Line Art", "description": "Simple, elegant line animations. Clean and professional.", "metadata": {"complexity": "low", "style": "minimal"}, "image_url": "https://picsum.photos/id/262/800/1000", "video_url": "/assets/video-types/line_art_animation.mp4"},
         {"title": "3D Product Showcase", "description": "Rotating 3D elements with depth. Modern and dimensional.", "metadata": {"complexity": "high", "style": "3d"}, "image_url": "https://picsum.photos/id/269/800/1000", "video_url": "https://assets.mixkit.co/videos/42957/42957-720.mp4"},
         {"title": "Kinetic Typography", "description": "Animated text with motion. Dynamic and engaging.", "metadata": {"complexity": "medium", "style": "text"}, "image_url": "https://picsum.photos/id/276/800/1000", "video_url": "https://assets.mixkit.co/video-templates/617/mixkit-617-360.mp4"},
         {"title": "Flat Icon Animation", "description": "Smooth icon transitions. Friendly and accessible.", "metadata": {"complexity": "low", "style": "flat"}, "image_url": "https://picsum.photos/id/283/800/1000", "video_url": "https://assets.mixkit.co/video-templates/571/mixkit-571-360.mp4"},
@@ -273,14 +206,14 @@ def _slug(title: str) -> str:
 
 def resync_category_cards(category: str):
     """Always overwrites this category's rows with the current CARD_SEED_DATA list on startup.
-    This keeps Supabase in sync with the code whenever cards are added, removed, renamed, or
+    This keeps Neon in sync with the code whenever cards are added, removed, renamed, or
     given new media (safe because this is generated reference content, not user-entered data)."""
     items = CARD_SEED_DATA.get(category, [])
     cards_resync_category(category, items)
-    logger.info("Resynced %d %s cards into Supabase", len(items), category)
+    logger.info("Resynced %d %s cards into Neon", len(items), category)
 
 def get_all_cards_from_db() -> Dict[str, List[Dict[str, Any]]]:
-    """Returns {category: [card_dict, ...]} read from Supabase, each card_dict tagged with its slug id."""
+    """Returns {category: [card_dict, ...]} read from Neon, each card_dict tagged with its slug id."""
     return cards_get_all()
 
 # --- Video Types: live, context-aware sub-options per video type ---
@@ -361,10 +294,10 @@ VIDEO_TYPE_SEED_DATA = {
 
 def resync_video_types():
     """Always overwrites video_types with the current VIDEO_TYPE_SEED_DATA on startup.
-    This keeps Supabase in sync with the code whenever labels, sub-options, or anything else
+    This keeps Neon in sync with the code whenever labels, sub-options, or anything else
     here is edited (safe because this is generated reference content, not user-entered data)."""
     video_types_resync(VIDEO_TYPE_SEED_DATA)
-    logger.info("Resynced %d video types into Supabase", len(VIDEO_TYPE_SEED_DATA))
+    logger.info("Resynced %d video types into Neon", len(VIDEO_TYPE_SEED_DATA))
 
 def get_all_video_types_from_db() -> Dict[str, Dict[str, Any]]:
     return video_types_get_all()
@@ -538,8 +471,8 @@ async def check_conflicts(input: ConflictCheckRequest):
     conflicts = find_style_conflicts(input.selections)
     return {"conflicts": conflicts}
 
-# Bucket in Supabase Storage where voice notes and uploaded reference files live.
-# It must exist and be public (create it once in the Supabase dashboard, or the code
+# Bucket in Neon Storage where voice notes and uploaded reference files live.
+# It must exist and be public (create it once in the Neon dashboard, or the code
 # will attempt to create it on first use below).
 UPLOAD_BUCKET = os.environ.get('SUPABASE_UPLOAD_BUCKET', 'uploads')
 
@@ -554,7 +487,7 @@ def _ensure_bucket():
             logger.warning("Could not create bucket %s: %s", UPLOAD_BUCKET, e)
 
 def _upload_bytes_to_storage(data: bytes, filename: str, content_type: str) -> str:
-    """Uploads raw bytes to Supabase Storage and returns a permanent public URL.
+    """Uploads raw bytes to Neon Storage and returns a permanent public URL.
     This replaces the old approach of storing browser blob: URLs, which only worked
     inside the tab that created them and were dead by the time the brief loaded."""
     _ensure_bucket()
@@ -569,7 +502,7 @@ def _upload_bytes_to_storage(data: bytes, filename: str, content_type: str) -> s
 
 @api_router.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
-    """Accepts a voice note or reference file, stores it permanently in Supabase Storage,
+    """Accepts a voice note or reference file, stores it permanently in Neon Storage,
     and returns a real public URL the brief page (and PDF exports) can actually load."""
     contents = await file.read()
     if not contents:
